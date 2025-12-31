@@ -2,44 +2,72 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Hyper-Cycle: Arena</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Cycle: Remastered</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        
+        /* UI LAYOUT */
         #ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+            pointer-events: none; display: flex; flex-direction: column;
         }
+
+        /* HEADS UP DISPLAY */
         #hud {
             display: flex; justify-content: space-between; padding: 20px;
             font-size: 24px; font-weight: 900; text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+            z-index: 10;
         }
-        .p1-score { color: #00ffff; text-shadow: 0 0 15px #00ffff; }
-        .p2-score { color: #ff0055; text-shadow: 0 0 15px #ff0055; }
+        .score-box { background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 5px; border: 1px solid #333; }
+        .p1-score { color: #00ffff; }
+        .p2-score { color: #ff0055; }
         
-        #game-over {
+        /* MENUS */
+        .menu {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; display: none; pointer-events: auto;
-            background: rgba(0,0,0,0.85); padding: 40px; border: 2px solid white;
-            backdrop-filter: blur(5px);
+            background: rgba(10, 10, 10, 0.95); border: 2px solid #00ffff;
+            padding: 40px; text-align: center; color: white; border-radius: 15px;
+            pointer-events: auto; min-width: 300px;
+            box-shadow: 0 0 80px rgba(0, 255, 255, 0.15);
+            z-index: 20;
         }
-        h1 { margin: 0 0 10px 0; color: white; letter-spacing: 5px; font-style: italic; }
-        p { color: #aaa; margin-bottom: 30px; }
-        button {
-            background: white; color: black; border: none; padding: 15px 40px;
-            font-size: 18px; font-weight: bold; cursor: pointer; transition: 0.2s;
-        }
-        button:hover { background: #00ffff; box-shadow: 0 0 20px #00ffff; }
         
-        /* Controls Hint */
-        #controls {
-            text-align: center; padding-bottom: 20px; color: rgba(255,255,255,0.4); font-size: 12px;
+        h1 { margin: 0 0 10px 0; letter-spacing: 4px; font-style: italic; font-size: 32px; color: #fff; text-shadow: 0 0 10px #00ffff; }
+        p { color: #aaa; margin-bottom: 25px; font-size: 14px; }
+        
+        button {
+            background: #00ffff; color: black; border: none; padding: 15px 40px;
+            font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 5px;
+            transition: 0.2s; width: 100%; text-transform: uppercase;
         }
+        button:hover { background: white; box-shadow: 0 0 20px white; }
+
+        /* TOUCH CONTROLS (Visible on Mobile) */
+        #touch-controls {
+            position: absolute; bottom: 20px; width: 100%; height: 150px;
+            display: flex; justify-content: space-between; padding: 0 20px; box-sizing: border-box;
+            pointer-events: auto; z-index: 5;
+        }
+        .t-btn {
+            width: 100px; height: 100px; border-radius: 50%;
+            border: 4px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.05);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px; color: rgba(255,255,255,0.5); user-select: none;
+            backdrop-filter: blur(4px);
+        }
+        .t-btn:active { background: rgba(0, 255, 255, 0.3); border-color: #00ffff; color: white; }
+
+        /* Hide touch controls on desktop if desired, but good to keep for hybrid devices */
+        @media (min-width: 1024px) { #touch-controls { opacity: 0.3; } }
+
     </style>
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
             }
         }
     </script>
@@ -47,341 +75,388 @@
 <body>
 
     <div id="ui-layer">
-        <div id="hud">
-            <div class="p1-score">YOU</div>
-            <div class="p2-score">CPU</div>
+        <div id="hud" style="display:none;">
+            <div class="score-box p1-score">YOU</div>
+            <div class="score-box p2-score">CPU</div>
         </div>
-        <div id="controls">ARROWS to Turn | SPACE to Boost</div>
     </div>
 
-    <div id="game-over">
-        <h1 id="winner-text">GAME OVER</h1>
+    <div id="start-menu" class="menu">
+        <h1>NEON RIDER</h1>
+        <p>Avoid the walls. Trap the enemy.</p>
+        <button id="start-btn">ENGAGE</button>
+    </div>
+
+    <div id="game-over" class="menu" style="display: none;">
+        <h1 id="winner-text">CRASHED</h1>
         <p id="sub-text">System Failure</p>
-        <button onclick="location.reload()">REMATCH</button>
+        <button id="restart-btn">REBOOT</button>
+    </div>
+
+    <div id="touch-controls" style="display:none;">
+        <div class="t-btn" id="btn-left">◀</div>
+        <div class="t-btn" id="btn-right">▶</div>
     </div>
 
     <script type="module">
         import * as THREE from 'three';
 
         // --- CONFIGURATION ---
-        const GRID_SIZE = 80;
-        const CELL_SIZE = 1;
-        const SPEED_NORMAL = 0.05; // Movement per frame
-        const MAX_TRAIL_LENGTH = 5000; // InstancedMesh limit
+        const GRID_SIZE = 100; // Larger map
+        const SPEED = 0.6;     // Bike speed
+        const TURN_SPEED = 0.15; // Camera smoothness
+        
+        // Directions: 0:North, 1:East, 2:South, 3:West
+        const DIRS = [
+            { x: 0, z: -1 }, // North
+            { x: 1, z: 0 },  // East
+            { x: 0, z: 1 },  // South
+            { x: -1, z: 0 }  // West
+        ];
 
-        let gameActive = true;
+        let gameActive = false;
+        let player, bot;
         
         // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505);
-        scene.fog = new THREE.FogExp2(0x050505, 0.035);
+        scene.background = new THREE.Color(0x020205); // Very dark blue/black
+        scene.fog = new THREE.Fog(0x020205, 20, 120); // Fog to hide world edge
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500);
         
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
-        // --- LIGHTS ---
-        const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+        // --- LIGHTING ---
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambient);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        dirLight.position.set(10, 20, 10);
-        scene.add(dirLight);
-
-        // --- THE GRID FLOOR ---
-        const gridHelper = new THREE.GridHelper(GRID_SIZE, GRID_SIZE, 0x111111, 0x111111);
-        gridHelper.position.y = -0.5;
+        // --- ENVIRONMENT ---
+        // 1. Visible Grid
+        const gridHelper = new THREE.GridHelper(GRID_SIZE, GRID_SIZE, 0x444455, 0x111122);
+        gridHelper.position.y = -0.1;
         scene.add(gridHelper);
-        
-        // Floor Plane (for visual contrast)
+
+        // 2. Floor Plane (Collision & Visuals)
         const planeGeo = new THREE.PlaneGeometry(GRID_SIZE * 4, GRID_SIZE * 4);
         planeGeo.rotateX(-Math.PI / 2);
-        const planeMat = new THREE.MeshBasicMaterial({ color: 0x020202 });
+        const planeMat = new THREE.MeshBasicMaterial({ color: 0x050510 });
         const floor = new THREE.Mesh(planeGeo, planeMat);
-        floor.position.y = -0.6;
+        floor.position.y = -0.2;
         scene.add(floor);
 
-        // --- INSTANCED MESHES (For optimized trails) ---
-        // This is the secret to high FPS. We create ONE mesh that draws 5000 cubes.
-        const trailGeo = new THREE.BoxGeometry(1, 1, 1);
-        const dummy = new THREE.Object3D(); // Helper to position instances
+        // --- COLLISION SYSTEM ---
+        // Using a Set string "x,z" is fast enough for this scale
+        const walls = new Set();
+        const wallObjects = []; // Keep track to clear them later
 
-        // Player 1 Trail (Cyan)
-        const p1Mat = new THREE.MeshStandardMaterial({ 
-            color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.0 
-        });
-        const p1Trails = new THREE.InstancedMesh(trailGeo, p1Mat, MAX_TRAIL_LENGTH);
-        p1Trails.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // Update often
-        scene.add(p1Trails);
+        function addWall(x, z, color) {
+            const key = `${Math.round(x)},${Math.round(z)}`;
+            if (walls.has(key)) return; // Already a wall here
 
-        // CPU Trail (Red)
-        const p2Mat = new THREE.MeshStandardMaterial({ 
-            color: 0xff0055, emissive: 0xff0055, emissiveIntensity: 2.0 
-        });
-        const p2Trails = new THREE.InstancedMesh(trailGeo, p2Mat, MAX_TRAIL_LENGTH);
-        p2Trails.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        scene.add(p2Trails);
+            walls.add(key);
 
-        // --- COLLISION MAP ---
-        // A simple 2D array to track occupied cells: occupied[x][z] = true
-        const collisionMap = new Map();
-
-        function setOccupied(x, z) {
-            collisionMap.set(`${Math.round(x)},${Math.round(z)}`, true);
+            // Create Visual Wall
+            const geo = new THREE.BoxGeometry(1, 2, 1); // Height 2 for visibility
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: color, 
+                emissive: color, 
+                emissiveIntensity: 1.5 
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(Math.round(x), 1, Math.round(z));
+            scene.add(mesh);
+            wallObjects.push(mesh);
         }
 
-        function isOccupied(x, z) {
-            // Check boundaries
-            if (x > GRID_SIZE / 2 || x < -GRID_SIZE / 2 || z > GRID_SIZE / 2 || z < -GRID_SIZE / 2) return true;
-            // Check map
-            return collisionMap.has(`${Math.round(x)},${Math.round(z)}`);
+        function checkCollision(x, z) {
+            // Check Map Bounds
+            const limit = GRID_SIZE / 2;
+            if (x > limit || x < -limit || z > limit || z < -limit) return true;
+            
+            // Check Walls
+            const key = `${Math.round(x)},${Math.round(z)}`;
+            return walls.has(key);
         }
 
-        // --- PLAYERS ---
+        // --- PLAYER CLASS ---
         class Bike {
-            constructor(color, x, z, dirX, dirZ, trailsMesh) {
-                this.mesh = new THREE.Mesh(
-                    new THREE.BoxGeometry(1, 0.5, 2),
-                    new THREE.MeshStandardMaterial({ color: 0x222222 })
+            constructor(color, x, z, dirIndex, isBot) {
+                this.color = color;
+                this.isBot = isBot;
+                this.dirIndex = dirIndex; // 0 to 3
+                this.speed = SPEED;
+                this.dead = false;
+
+                // Mesh Group
+                this.mesh = new THREE.Group();
+                this.mesh.position.set(x, 0, z);
+                
+                // 1. The Bike Body
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.8, 0.8, 2),
+                    new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.2 })
                 );
-                // Add glowing engine
-                const engine = new THREE.Mesh(
-                    new THREE.BoxGeometry(0.8, 0.6, 1.5),
+                body.position.y = 0.4;
+                this.mesh.add(body);
+
+                // 2. The Glow Engine
+                const glow = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.6, 0.9, 1.5),
                     new THREE.MeshBasicMaterial({ color: color })
                 );
-                this.mesh.add(engine);
-                
-                this.mesh.position.set(x, 0, z);
+                glow.position.y = 0.4;
+                this.mesh.add(glow);
+
+                // 3. Headlight (Spotlight) - Crucial for visibility!
+                this.headlight = new THREE.SpotLight(0xffffff, 10, 40, 0.6, 0.5, 1);
+                this.headlight.position.set(0, 2, 1);
+                this.headlight.target.position.set(0, 0, 10);
+                this.mesh.add(this.headlight);
+                this.mesh.add(this.headlight.target);
+
                 scene.add(this.mesh);
 
-                this.dirX = dirX;
-                this.dirZ = dirZ;
-                this.nextDirX = dirX;
-                this.nextDirZ = dirZ;
+                // Tracking
+                this.lastX = Math.round(x);
+                this.lastZ = Math.round(z);
                 
-                this.speed = SPEED_NORMAL;
-                this.trails = trailsMesh;
-                this.trailCount = 0;
-                this.lastGridPos = { x: x, z: z };
-                this.dead = false;
+                // Snap rotation immediately
+                this.updateRotation();
+            }
+
+            updateRotation() {
+                // Smoothly snap mesh rotation to direction index
+                // 0=N (PI), 1=E (PI/2), 2=S (0), 3=W (-PI/2) -- Three.js coord system varies, let's explicit:
+                // North (0, -1) -> Rotation Y = PI
+                // East (1, 0) -> Rotation Y = PI / 2 (Left hand rule logic adjustment needed)
                 
-                // Add a light to the bike
-                this.light = new THREE.PointLight(color, 2, 15);
-                this.light.position.set(0, 2, 0);
-                this.mesh.add(this.light);
+                // Standard Map:
+                // N (0,-1) -> rot 3.14
+                // E (1,0) -> rot 4.71 (or -1.57)
+                // S (0,1) -> rot 0
+                // W (-1,0) -> rot 1.57
+                
+                const rotations = [Math.PI, -Math.PI/2, 0, Math.PI/2];
+                this.mesh.rotation.y = rotations[this.dirIndex];
+            }
+
+            turn(val) {
+                // val is -1 (Left) or 1 (Right)
+                this.dirIndex += val;
+                if (this.dirIndex > 3) this.dirIndex = 0;
+                if (this.dirIndex < 0) this.dirIndex = 3;
+                this.updateRotation();
             }
 
             update() {
                 if (this.dead) return;
 
-                // 1. Move smooth
-                this.mesh.position.x += this.dirX * this.speed * 4; // *4 arbitrary speed scale
-                this.mesh.position.z += this.dirZ * this.speed * 4;
+                // Move forward based on current direction
+                const dir = DIRS[this.dirIndex];
+                this.mesh.position.x += dir.x * this.speed;
+                this.mesh.position.z += dir.z * this.speed;
 
-                // 2. Rotate Mesh
-                if (this.dirX === 1) this.mesh.rotation.y = -Math.PI / 2;
-                else if (this.dirX === -1) this.mesh.rotation.y = Math.PI / 2;
-                else if (this.dirZ === 1) this.mesh.rotation.y = 0;
-                else if (this.dirZ === -1) this.mesh.rotation.y = Math.PI;
+                // Grid Logic (Wall Placing)
+                const cx = Math.round(this.mesh.position.x);
+                const cz = Math.round(this.mesh.position.z);
 
-                // 3. Grid Logic (Drop trail & Check Collision)
-                const currentGridX = Math.round(this.mesh.position.x);
-                const currentGridZ = Math.round(this.mesh.position.z);
-
-                // Only perform logic if we moved to a NEW grid cell
-                if (currentGridX !== this.lastGridPos.x || currentGridZ !== this.lastGridPos.z) {
+                if (cx !== this.lastX || cz !== this.lastZ) {
                     
-                    // A. Check Collision BEFORE placing wall
-                    if (isOccupied(currentGridX, currentGridZ)) {
-                        this.explode();
+                    // 1. Did we hit something?
+                    if (checkCollision(cx, cz)) {
+                        this.die();
                         return;
                     }
 
-                    // B. Place Wall in PREVIOUS spot (so we don't hit ourselves immediately)
-                    this.addTrail(this.lastGridPos.x, this.lastGridPos.z);
-                    setOccupied(this.lastGridPos.x, this.lastGridPos.z);
-
-                    // C. Update Last Pos
-                    this.lastGridPos.x = currentGridX;
-                    this.lastGridPos.z = currentGridZ;
+                    // 2. Place Wall at PREVIOUS spot
+                    addWall(this.lastX, this.lastZ, this.color);
                     
-                    // D. Apply Turn (Snap to grid center to prevent drift)
-                    this.mesh.position.x = currentGridX;
-                    this.mesh.position.z = currentGridZ;
-                    this.dirX = this.nextDirX;
-                    this.dirZ = this.nextDirZ;
+                    // 3. Update internal tracker
+                    this.lastX = cx;
+                    this.lastZ = cz;
+
+                    // 4. Bot Logic (only check when entering new tile)
+                    if (this.isBot) this.botAI();
                 }
             }
 
-            addTrail(x, z) {
-                if (this.trailCount >= MAX_TRAIL_LENGTH) return;
-                
-                dummy.position.set(x, 0, z);
-                dummy.updateMatrix();
-                
-                this.trails.setMatrixAt(this.trailCount++, dummy.matrix);
-                this.trails.instanceMatrix.needsUpdate = true;
+            botAI() {
+                // Look ahead
+                const dir = DIRS[this.dirIndex];
+                const nextX = this.lastX + dir.x;
+                const nextZ = this.lastZ + dir.z;
+
+                // Also look 2 steps ahead (safety buffer)
+                const farX = this.lastX + (dir.x * 2);
+                const farZ = this.lastZ + (dir.z * 2);
+
+                if (checkCollision(nextX, nextZ) || checkCollision(farX, farZ) || Math.random() < 0.05) {
+                    // Turn Randomly left or right
+                    const turn = Math.random() > 0.5 ? 1 : -1;
+                    
+                    // Check if that turn kills us instantly
+                    let newIdx = this.dirIndex + turn;
+                    if (newIdx > 3) newIdx = 0; if (newIdx < 0) newIdx = 3;
+                    
+                    const sideDir = DIRS[newIdx];
+                    if (!checkCollision(this.lastX + sideDir.x, this.lastZ + sideDir.z)) {
+                        this.turn(turn);
+                    } else {
+                        // Try other way
+                        this.turn(-turn);
+                    }
+                }
             }
 
-            explode() {
+            die() {
                 this.dead = true;
                 this.mesh.visible = false;
-                this.light.intensity = 0;
-                createExplosion(this.mesh.position, this.light.color);
-                checkGameOver();
+                this.headlight.intensity = 0;
+                
+                // Particle Explosion
+                createExplosion(this.mesh.position, this.color);
+                
+                if (!gameActive) return; // Prevent double trigger
+                
+                if (this.isBot) {
+                    endGame("VICTORY", "Target Eliminated");
+                } else {
+                    endGame("CRASHED", "You hit the wall");
+                }
             }
         }
 
-        // --- INIT PLAYERS ---
-        const player = new Bike(0x00ffff, -10, 0, 0, 1, p1Trails); // Starts Left, moving Down
-        const bot = new Bike(0xff0055, 10, 0, 0, -1, p2Trails);   // Starts Right, moving Up
-
-        // --- PARTICLES (EXPLOSION) ---
+        // --- PARTICLES ---
         const particleGeo = new THREE.BufferGeometry();
-        const particleCount = 200;
-        const posArray = new Float32Array(particleCount * 3);
-        const velArray = []; // Store velocities
-
-        for(let i=0; i<particleCount*3; i++) posArray[i] = 0;
-        particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-        
-        const particleMat = new THREE.PointsMaterial({ size: 0.5, color: 0xffffff });
+        const pCount = 200;
+        const pPos = new Float32Array(pCount * 3);
+        const pVel = [];
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        const particleMat = new THREE.PointsMaterial({ size: 0.8, color: 0xffffff });
         const particles = new THREE.Points(particleGeo, particleMat);
         particles.visible = false;
         scene.add(particles);
+        let expFrame = 0;
 
-        let explosionFrame = 0;
-        
         function createExplosion(pos, color) {
             particles.visible = true;
-            particles.material.color = color;
-            explosionFrame = 60; // Run for 60 frames
-
-            const positions = particles.geometry.attributes.position.array;
-            
-            for(let i=0; i < particleCount; i++) {
-                // Reset positions to crash site
-                positions[i*3] = pos.x;
-                positions[i*3+1] = pos.y;
-                positions[i*3+2] = pos.z;
-                
-                // Random velocities
-                velArray[i] = {
-                    x: (Math.random() - 0.5) * 1.5,
-                    y: (Math.random() - 0.5) * 1.5 + 0.5, // Upward bias
-                    z: (Math.random() - 0.5) * 1.5
+            particles.material.color.setHex(color);
+            expFrame = 60;
+            const arr = particles.geometry.attributes.position.array;
+            for(let i=0; i<pCount; i++) {
+                arr[i*3] = pos.x; arr[i*3+1] = pos.y; arr[i*3+2] = pos.z;
+                pVel[i] = {
+                    x: (Math.random()-0.5) * 1.5,
+                    y: (Math.random()-0.5) * 1.5 + 0.5,
+                    z: (Math.random()-0.5) * 1.5
                 };
             }
         }
 
-        function updateParticles() {
-            if (explosionFrame <= 0) {
-                particles.visible = false;
-                return;
-            }
+        // --- GAME LOOP ---
+        function startGame() {
+            // Reset Arrays
+            walls.clear();
+            wallObjects.forEach(w => scene.remove(w));
+            wallObjects.length = 0;
+
+            if (player) { scene.remove(player.mesh); }
+            if (bot) { scene.remove(bot.mesh); }
+
+            // Spawn Player (North facing)
+            player = new Bike(0x00ffff, 0, 20, 0, false);
             
-            const positions = particles.geometry.attributes.position.array;
-            for(let i=0; i < particleCount; i++) {
-                positions[i*3] += velArray[i].x;
-                positions[i*3+1] += velArray[i].y;
-                positions[i*3+2] += velArray[i].z;
-            }
-            particles.geometry.attributes.position.needsUpdate = true;
-            explosionFrame--;
+            // Spawn Bot (South facing)
+            bot = new Bike(0xff0055, 0, -20, 2, true);
+
+            gameActive = true;
+            document.getElementById('start-menu').style.display = 'none';
+            document.getElementById('game-over').style.display = 'none';
+            document.getElementById('hud').style.display = 'flex';
+            document.getElementById('touch-controls').style.display = 'flex';
         }
 
-        // --- BOT AI ---
-        function updateBot() {
-            if (bot.dead) return;
-
-            // Simple raycast-like logic
-            // Look ahead 2 steps
-            const lookX = bot.lastGridPos.x + bot.dirX * 2;
-            const lookZ = bot.lastGridPos.z + bot.dirZ * 2;
-
-            // If danger ahead, turn!
-            if (isOccupied(lookX, lookZ) || Math.random() < 0.02) { // 2% chance to turn randomly
-                // Try Turning Left relative to current direction
-                let leftX = 0, leftZ = 0;
-                if (bot.dirZ === -1) { leftX = -1; } // Moving North -> Left is West
-                else if (bot.dirZ === 1) { leftX = 1; } // Moving South -> Left is East
-                else if (bot.dirX === -1) { leftZ = 1; } // Moving West -> Left is South
-                else if (bot.dirX === 1) { leftZ = -1; } // Moving East -> Left is North
-
-                const tryLeftX = bot.lastGridPos.x + leftX;
-                const tryLeftZ = bot.lastGridPos.z + leftZ;
-
-                if (!isOccupied(tryLeftX, tryLeftZ)) {
-                    bot.nextDirX = leftX;
-                    bot.nextDirZ = leftZ;
-                } else {
-                    // Left is blocked, try Right (opposite of Left)
-                    bot.nextDirX = -leftX;
-                    bot.nextDirZ = -leftZ;
-                }
-            }
-        }
-
-        // --- INPUTS ---
-        window.addEventListener('keydown', (e) => {
-            // Prevent scrolling
-            if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].indexOf(e.code) > -1) {
-                e.preventDefault();
-            }
-
-            if (e.key === 'ArrowUp' && player.dirZ !== 1) { player.nextDirX = 0; player.nextDirZ = -1; }
-            if (e.key === 'ArrowDown' && player.dirZ !== -1) { player.nextDirX = 0; player.nextDirZ = 1; }
-            if (e.key === 'ArrowLeft' && player.dirX !== 1) { player.nextDirX = -1; player.nextDirZ = 0; }
-            if (e.key === 'ArrowRight' && player.dirX !== -1) { player.nextDirX = 1; player.nextDirZ = 0; }
-        });
-
-        function checkGameOver() {
-            if (!gameActive) return;
-            
-            if (player.dead) {
-                gameActive = false;
-                document.getElementById('winner-text').innerText = "ELIMINATED";
-                document.getElementById('winner-text').style.color = "#ff0055";
-                document.getElementById('sub-text').innerText = "The CPU outsmarted you.";
+        function endGame(title, sub) {
+            gameActive = false;
+            document.getElementById('winner-text').innerText = title;
+            document.getElementById('winner-text').style.color = title === "VICTORY" ? "#00ffff" : "#ff0055";
+            document.getElementById('sub-text').innerText = sub;
+            setTimeout(() => {
                 document.getElementById('game-over').style.display = 'block';
-            } else if (bot.dead) {
-                gameActive = false;
-                document.getElementById('winner-text').innerText = "VICTORY";
-                document.getElementById('winner-text').style.color = "#00ffff";
-                document.getElementById('sub-text').innerText = "Target Destroyed.";
-                document.getElementById('game-over').style.display = 'block';
-            }
+                document.getElementById('touch-controls').style.display = 'none';
+            }, 500);
         }
 
-        // --- MAIN LOOP ---
         function animate() {
             requestAnimationFrame(animate);
 
             if (gameActive) {
-                updateBot();
                 player.update();
                 bot.update();
             }
-            
-            updateParticles();
 
-            // Camera Follow Logic (Smooth)
-            if (!player.dead) {
-                const targetX = player.mesh.position.x;
-                const targetZ = player.mesh.position.z + 15; // Behind
-                const targetY = 20; // High up
+            // Explosion Logic
+            if (expFrame > 0) {
+                expFrame--;
+                const arr = particles.geometry.attributes.position.array;
+                for(let i=0; i<pCount; i++) {
+                    arr[i*3] += pVel[i].x;
+                    arr[i*3+1] += pVel[i].y;
+                    arr[i*3+2] += pVel[i].z;
+                }
+                particles.geometry.attributes.position.needsUpdate = true;
+                if (expFrame === 0) particles.visible = false;
+            }
 
+            // Camera Chase Logic (Smooth Racer View)
+            if (player && !player.dead) {
+                // Determine "Behind" position based on direction
+                const dir = DIRS[player.dirIndex];
+                
+                // Camera Target Position (Behind and slightly Up)
+                const dist = 12;
+                const height = 6;
+                const targetX = player.mesh.position.x - (dir.x * dist);
+                const targetZ = player.mesh.position.z - (dir.z * dist);
+                
+                // Smooth Lerp
                 camera.position.x += (targetX - camera.position.x) * 0.1;
                 camera.position.z += (targetZ - camera.position.z) * 0.1;
-                camera.position.y += (targetY - camera.position.y) * 0.1;
-                camera.lookAt(player.mesh.position);
+                camera.position.y += ((player.mesh.position.y + height) - camera.position.y) * 0.1;
+                
+                // Look slightly ahead of player
+                const lookX = player.mesh.position.x + (dir.x * 10);
+                const lookZ = player.mesh.position.z + (dir.z * 10);
+                camera.lookAt(lookX, 0, lookZ);
             }
 
             renderer.render(scene, camera);
         }
+
+        // --- INPUTS ---
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('restart-btn').addEventListener('click', startGame);
+
+        window.addEventListener('keydown', (e) => {
+            if (!gameActive) return;
+            if (e.key === 'ArrowLeft') player.turn(-1); // Left relative to bike
+            if (e.key === 'ArrowRight') player.turn(1); // Right relative to bike
+        });
+
+        // Touch
+        const btnLeft = document.getElementById('btn-left');
+        const btnRight = document.getElementById('btn-right');
+        
+        // Use pointerdown for instant reaction
+        btnLeft.addEventListener('pointerdown', (e) => { 
+            e.preventDefault(); if(gameActive) player.turn(-1); 
+        });
+        btnRight.addEventListener('pointerdown', (e) => { 
+            e.preventDefault(); if(gameActive) player.turn(1); 
+        });
 
         // Resize
         window.addEventListener('resize', () => {
@@ -391,6 +466,7 @@
         });
 
         animate();
+
     </script>
 </body>
 </html>
