@@ -2,223 +2,189 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Crystal Hunter Open World</title>
+    <title>Neon Roller 3D</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         #ui {
             position: absolute; top: 20px; left: 20px;
-            color: #00ffcc; font-family: 'Courier New', Courier, monospace;
-            font-size: 24px; font-weight: bold;
-            pointer-events: none;
-            text-shadow: 0 0 10px #00ffcc;
+            color: #fff; font-size: 20px; font-weight: bold; pointer-events: none;
         }
-        #instructions {
-            position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            color: white; font-family: sans-serif; text-align: center;
-            background: rgba(0, 0, 0, 0.8); padding: 40px; border: 2px solid #00ffcc;
-            border-radius: 10px; cursor: pointer;
+        #status { color: #00ffcc; }
+        #controls-hint {
+            position: absolute; bottom: 20px; width: 100%;
+            text-align: center; color: #888; pointer-events: none;
         }
     </style>
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
             }
         }
     </script>
 </head>
 <body>
-    <div id="ui">Scrap Collected: <span id="score">0</span> / 20</div>
-    
-    <div id="instructions">
-        <h1>SCAVENGER PROTOCOL</h1>
-        <p>Click to Initialize</p>
-        <p>WASD to Move | SPACE to Jump</p>
-        <p>Collect the floating robots</p>
-    </div>
+    <div id="ui">Level: 1 | Status: <span id="status">ALIVE</span></div>
+    <div id="controls-hint">Use Arrow Keys to Move</div>
 
     <script type="module">
         import * as THREE from 'three';
-        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        let camera, scene, renderer, controls;
-        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-        let canJump = false;
-        let velocity = new THREE.Vector3();
-        let direction = new THREE.Vector3();
-        let prevTime = performance.now();
+        // --- SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x101015);
         
-        // Game Variables
-        let collectibles = []; // Array to store our 3D models
-        let score = 0;
-        const scoreElement = document.getElementById('score');
+        // Camera (Isometric-ish view)
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 30, 40);
+        camera.lookAt(0, 0, 0);
 
-        init();
-        animate();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; // Enable shadows
+        document.body.appendChild(renderer.domElement);
 
-        function init() {
-            // 1. SCENE SETUP (Dark Tron Style)
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x050510);
-            scene.fog = new THREE.Fog(0x050510, 10, 150);
+        // --- LIGHTS ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambientLight);
 
-            // 2. LIGHTING
-            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 3.0);
-            hemiLight.position.set(0, 20, 0);
-            scene.add(hemiLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
 
-            // 3. CAMERA & CONTROLS
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
-            camera.position.y = 10;
+        // --- GAME OBJECTS ---
+        
+        // 1. The Player (Ball)
+        const playerRadius = 1;
+        const playerGeo = new THREE.SphereGeometry(playerRadius, 32, 32);
+        const playerMat = new THREE.MeshPhongMaterial({ color: 0x00ffcc, emissive: 0x004444 });
+        const player = new THREE.Mesh(playerGeo, playerMat);
+        player.castShadow = true;
+        scene.add(player);
+
+        // Physics State
+        let velocity = { x: 0, y: 0, z: 0 };
+        let onGround = false;
+        const gravity = -0.5;
+        const friction = 0.96; // 1 = ice, 0.8 = sand
+        const speed = 0.8;
+
+        // 2. The Level (Platforms)
+        const platforms = [];
+        
+        function createPlatform(x, y, z, w, d, color = 0x444444) {
+            const geo = new THREE.BoxGeometry(w, 1, d);
+            const mat = new THREE.MeshPhongMaterial({ color: color });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, y, z);
+            mesh.receiveShadow = true;
+            scene.add(mesh);
             
-            controls = new PointerLockControls(camera, document.body);
-
-            const instructions = document.getElementById('instructions');
-            instructions.addEventListener('click', () => controls.lock());
-            controls.addEventListener('lock', () => instructions.style.display = 'none');
-            controls.addEventListener('unlock', () => instructions.style.display = 'block');
-            scene.add(controls.getObject());
-
-            // 4. MOVEMENT LISTENERS
-            const onKeyDown = (event) => {
-                switch (event.code) {
-                    case 'KeyW': moveForward = true; break;
-                    case 'KeyA': moveLeft = true; break;
-                    case 'KeyS': moveBackward = true; break;
-                    case 'KeyD': moveRight = true; break;
-                    case 'Space': if (canJump) velocity.y += 350; canJump = false; break;
-                }
-            };
-            const onKeyUp = (event) => {
-                switch (event.code) {
-                    case 'KeyW': moveForward = false; break;
-                    case 'KeyA': moveLeft = false; break;
-                    case 'KeyS': moveBackward = false; break;
-                    case 'KeyD': moveRight = false; break;
-                }
-            };
-            document.addEventListener('keydown', onKeyDown);
-            document.addEventListener('keyup', onKeyUp);
-
-            // 5. THE WORLD (Grid Floor)
-            const gridHelper = new THREE.GridHelper(2000, 100, 0x00ffcc, 0x222222);
-            scene.add(gridHelper);
-            
-            // Invisible floor for physics
-            const floorGeo = new THREE.PlaneGeometry(2000, 2000);
-            floorGeo.rotateX(-Math.PI / 2);
-            const floorMat = new THREE.MeshBasicMaterial({ visible: false });
-            const floor = new THREE.Mesh(floorGeo, floorMat);
-            scene.add(floor);
-
-            // 6. LOAD EXTERNAL GLB MODELS
-            // We use a sample robot model hosted online so this code works instantly.
-            // To use your own, replace the URL with './my-model.glb'
-            const loader = new GLTFLoader();
-            const modelUrl = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
-
-            loader.load(modelUrl, (gltf) => {
-                const baseModel = gltf.scene;
-                
-                // Scale it down if needed
-                baseModel.scale.set(0.5, 0.5, 0.5); 
-
-                // Create 20 Clones
-                for (let i = 0; i < 20; i++) {
-                    const model = baseModel.clone();
-                    
-                    // Random Position
-                    const x = (Math.random() - 0.5) * 400;
-                    const z = (Math.random() - 0.5) * 400;
-                    model.position.set(x, 2, z); // Start slightly above ground
-                    
-                    // Add some custom data to animate it later
-                    model.userData = { 
-                        id: i, 
-                        rotationSpeed: Math.random() * 0.02 + 0.01,
-                        bobSpeed: Math.random() * 0.005 + 0.002,
-                        originalY: 2
-                    };
-
-                    scene.add(model);
-                    collectibles.push(model);
-                }
-            }, undefined, (error) => {
-                console.error('An error happened:', error);
-            });
-
-            // 7. RENDERER
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            document.body.appendChild(renderer.domElement);
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
+            // Store data for collision detection
+            platforms.push({
+                mesh: mesh,
+                minX: x - w/2, maxX: x + w/2,
+                minZ: z - d/2, maxZ: z + d/2,
+                y: y + 0.5 // Top surface Y
             });
         }
 
+        // Build Level 1
+        createPlatform(0, -1, 0, 10, 10, 0x555555); // Start
+        createPlatform(0, -1, -15, 4, 20, 0xaaaaaa); // Bridge
+        createPlatform(-10, -1, -30, 15, 10, 0x555555); // Turn Left
+        createPlatform(-15, -1, -50, 4, 30, 0xaaaaaa); // Long Bridge
+        createPlatform(-15, -1, -75, 10, 10, 0x00ff00); // GOAL (Green)
+
+        const goalZ = -75; // Z position of the goal
+
+        // --- INPUT ---
+        const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        // --- ANIMATION LOOP ---
         function animate() {
             requestAnimationFrame(animate);
-            const time = performance.now();
 
-            if (controls.isLocked) {
-                const delta = (time - prevTime) / 1000;
+            // 1. Apply Forces
+            if (keys.ArrowUp) velocity.z -= speed * 0.1;
+            if (keys.ArrowDown) velocity.z += speed * 0.1;
+            if (keys.ArrowLeft) velocity.x -= speed * 0.1;
+            if (keys.ArrowRight) velocity.x += speed * 0.1;
 
-                // Physics (Movement)
-                velocity.x -= velocity.x * 10.0 * delta;
-                velocity.z -= velocity.z * 10.0 * delta;
-                velocity.y -= 9.8 * 100.0 * delta;
+            // Apply Friction (Air resistance + rolling friction)
+            velocity.x *= friction;
+            velocity.z *= friction;
 
-                direction.z = Number(moveForward) - Number(moveBackward);
-                direction.x = Number(moveRight) - Number(moveLeft);
-                direction.normalize();
+            // Apply Gravity
+            velocity.y += gravity * 0.1;
 
-                if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta;
-                if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
+            // 2. Move Player (Temporary Position)
+            player.position.x += velocity.x;
+            player.position.z += velocity.z;
+            player.position.y += velocity.y;
 
-                controls.moveRight(-velocity.x * delta);
-                controls.moveForward(-velocity.z * delta);
-                controls.getObject().position.y += (velocity.y * delta);
-
-                if (controls.getObject().position.y < 10) {
-                    velocity.y = 0;
-                    controls.getObject().position.y = 10;
-                    canJump = true;
-                }
-
-                // GAME LOGIC: Check Collisions & Animate Models
-                const playerPos = controls.getObject().position;
-
-                for (let i = collectibles.length - 1; i >= 0; i--) {
-                    const obj = collectibles[i];
-
-                    // 1. Animate (Spin and Bob)
-                    obj.rotation.y += obj.userData.rotationSpeed;
-                    obj.position.y = obj.userData.originalY + Math.sin(time * obj.userData.bobSpeed) * 2;
-
-                    // 2. Collision Detection (Distance Check)
-                    const distance = playerPos.distanceTo(obj.position);
+            // 3. Collision Detection (Simple)
+            onGround = false;
+            
+            // Check against every platform
+            for (const plat of platforms) {
+                // Are we above this platform horizontally?
+                if (player.position.x >= plat.minX && player.position.x <= plat.maxX &&
+                    player.position.z >= plat.minZ && player.position.z <= plat.maxZ) {
                     
-                    if (distance < 5) {
-                        // Player touched the item!
-                        scene.remove(obj);         // Remove from 3D world
-                        collectibles.splice(i, 1); // Remove from logic array
-                        score++;
-                        scoreElement.innerText = score;
-                        
-                        // Simple feedback (console or sound could go here)
-                        console.log("Collected!");
+                    // Are we touching the surface?
+                    // (Check if we are falling through it)
+                    if (player.position.y - playerRadius <= plat.y && player.position.y > plat.y - 1) {
+                        player.position.y = plat.y + playerRadius; // Snap to top
+                        velocity.y = 0;
+                        onGround = true;
                     }
                 }
             }
-            prevTime = time;
+
+            // 4. Game Logic
+            const statusEl = document.getElementById('status');
+
+            // Fall Death
+            if (player.position.y < -20) {
+                statusEl.innerText = "FALLEN (Resetting...)";
+                statusEl.style.color = "red";
+                
+                // Respawn Logic
+                setTimeout(() => {
+                    player.position.set(0, 2, 0);
+                    velocity = { x: 0, y: 0, z: 0 };
+                    statusEl.innerText = "ALIVE";
+                    statusEl.style.color = "#00ffcc";
+                }, 1000);
+            }
+
+            // Win Condition
+            if (Math.abs(player.position.z - goalZ) < 5 && Math.abs(player.position.x + 15) < 5) {
+                statusEl.innerText = "VICTORY!";
+                player.material.emissive.setHex(0x00ff00);
+            }
+
+            // 5. Camera Follow (Smooth)
+            // Camera trails slightly behind the player
+            camera.position.x += (player.position.x - camera.position.x) * 0.1;
+            camera.position.z += (player.position.z + 20 - camera.position.z) * 0.1;
+            camera.lookAt(player.position);
+
             renderer.render(scene, camera);
         }
+
+        animate();
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
